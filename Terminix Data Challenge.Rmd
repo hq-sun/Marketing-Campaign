@@ -128,22 +128,104 @@ y_train <- train %>% select (sale)
 y_test <- test %>% select (sale)
 ```
 
-
-
-
-## Feature selection - correlation matrix
+## Pre-processing the data
 ```{r}
-# Remove redudant features
-X_train_1h_cc <- X_train_1h_no_dup_Ref1 %>%
+# Use complete cases for feature selection
+train_cc <- train %>%
   filter(complete.cases(.)) 
 
-summarizeColumns(X_train_1h_cc) %>%
+summarizeColumns(train_cc) %>%
   select(name,type,na,mean,median,min,max)%>%
-  mutate(percent_miss=(na/nrow(X_train_1h_cc))*100)
+  mutate(percent_miss=(na/nrow(train_cc))*100)
 ## No missing values, but some variables are all 0 at this complete case scenario
 
-# Remove columns that all 0s
-X_train_1h_cc_no0 <- X_train_1h_cc[, colSums(X_train_1h_cc != 0) > 0]
+# Remove columns that are all 0s
+train_cc_no0 <- train_cc[, colSums(train_cc != 0) > 0]
+```
+
+## Boruta
+```{r}
+# Perform Boruta search
+library(Boruta)
+boruta_output <- Boruta(sale ~ ., data=na.omit(train), doTrace=0)  
+
+# Get significant variables including tentatives
+boruta_signif <- getSelectedAttributes(boruta_output, withTentative = TRUE)
+print(boruta_signif)
+## 58 variables are selected
+```
+
+```{r}
+# Do a tentative rough fix
+roughFixMod <- TentativeRoughFix(boruta_output)
+boruta_signif <- getSelectedAttributes(roughFixMod)
+print(boruta_signif)
+## 52 variables are selected
+```
+
+```{r}
+# Variable Importance Scores
+imps <- attStats(roughFixMod)
+imps2 = imps[imps$decision != 'Rejected', c('meanImp', 'decision')]
+boruta_df <- head(imps2[order(-imps2$meanImp), ], 10)  # descending sort
+boruta_vars <- row.names(boruta_df)
+print(boruta_vars)
+# [1] "CUSTOMER_CANCEL_REASON_OTHER" "BASE_PRICE"                   "BCC5520_AVG"
+# [4] "ILN6200A_PCT"                 "REV7430_AVG"                  "OPTIONS_PRICE"
+# [7] "BCC5421_AVG"                  "ALL6200A_PCT"                 "ALL6280A_PCT"
+# [10] "ILN7430_AVG"
+
+# Plot variable importance
+plot(boruta_output, cex.axis=.7, las=2, xlab="", main="Variable Importance")  
+```
+
+## Variable Importance from Machine Learning Algorithms - super fast
+```{r}
+# Train an rpart model and compute variable importance.
+library(caret)
+set.seed(100)
+# colnames(train) <- make.names(colnames(train))
+
+# Convert target variable to the factor
+train$sale = as.factor(train$sale)
+rPartMod <- train(sale ~ ., data=na.omit(train), method="rpart")
+rpartImp <- varImp(rPartMod)
+print(rpartImp)
+# CUSTOMER_CANCEL_REASON_OTHER	BASE_PRICE		OPTIONS_PRICE			REN220_SALES_CHANNEL_DTC.NON.TPV			
+# REN220_SALES_CHANNEL_DTC.TPV			CUSTOMER_CANCEL_REASON_CM		
+# Mosaic_Z4_L41			Mosaic_Z4_J35			CUSTOMER_CANCEL_REASON_TPEXCDENLS		REV6200A_PCT
+## Some of these variables have importance value as 0, so probably not that reliable.
+```
+
+
+
+
+
+
+
+## Rank Features By Importance
+```{r}
+set.seed(123)
+# load the library
+library(mlbench)
+library(caret)
+
+# prepare training scheme
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+# train the model
+model <- train(sale~., data=train_cc_no0, method="lvq", preProcess="scale", trControl=control)
+# estimate variable importance
+importance <- varImp(model, scale=FALSE)
+# summarize importance
+print(importance)
+# plot importance
+plot(importance)
+```
+
+
+## Correlation Matrix
+```{r}
+# Remove redudant features
 
 set.seed(7)
 # load the library
@@ -159,24 +241,6 @@ highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.5)
 # print indexes of highly correlated attributes
 print(highlyCorrelated)
 
-```
-## Rank Features By Importance
-```{r}
-set.seed(7)
-# load the library
-library(mlbench)
-library(caret)
-
-# prepare training scheme
-control <- trainControl(method="repeatedcv", number=10, repeats=3)
-# train the model
-model <- train(diabetes~., data=PimaIndiansDiabetes, method="lvq", preProcess="scale", trControl=control)
-# estimate variable importance
-importance <- varImp(model, scale=FALSE)
-# summarize importance
-print(importance)
-# plot importance
-plot(importance)
 ```
 
 
