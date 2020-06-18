@@ -43,40 +43,23 @@ data <- read.csv(file = 'data/raw/dataset.csv')
 ## 23651 obs, 46 vars
 ```
 
-## Data Partitioning - Split training and validation sets
-```{r}
-smp_size <- floor(0.75 * nrow(data))
-
-# set the seed to make the partition reproducible
-set.seed(123)
-train_ind <- sample(seq_len(nrow(data)), size = smp_size)
-
-train <- data[train_ind, ]
-test <- data[-train_ind, ]
-
-X_train <- train %>% select (-sale)
-X_test <- test %>% select (-sale)
-y_train <- train %>% select (sale)
-y_test <- test %>% select (sale)
-```
-
 ## Data Exploration
 ```{r}
-summarizeColumns(X_train) %>%
+summarizeColumns(data) %>%
   select(name,type,na,mean,median,min,max)%>%
-  mutate(percent_miss=(na/nrow(X_train))*100)
+  mutate(percent_miss=(na/nrow(data))*100)
 ## Maximum missing percentage is 16.4%
 ## There are four percentage columns ranging from 0 to 1000: MTA6200A_PCT, MTA7430_AVG, MTF6200A_PCT, MTF6280A_PCT
 
-names(X_train[sapply(X_train, is.factor)])
+names(data[sapply(data, is.factor)])
 ## 5 categorical variables: CANCEL_REASON, CUSTOMER_CANCEL_REASON, IS_ELIGIBLE_FOR_EVERGREEN, Mosaic_Z4, REN220_SALES_CHANNEL
 ```
 
 ## Plot histograms for four problematic pct variables
 ```{r}
-X_train_problematic <- X_train %>% select(MTA6200A_PCT, MTA7430_AVG, MTF6200A_PCT, MTF6280A_PCT)
+data_problematic <- data %>% select(MTA6200A_PCT, MTA7430_AVG, MTF6200A_PCT, MTF6280A_PCT)
 
-X_train_problematic %>%
+data_problematic %>%
   keep(is.numeric) %>% 
   gather() %>% 
   ggplot(aes(value)) +
@@ -86,46 +69,67 @@ X_train_problematic %>%
 
 ## Deal with Categorical Variables
 ```{r}
-count(X_train, 'CANCEL_REASON')  ## 24 levels
-count(X_train, 'CUSTOMER_CANCEL_REASON')  ## 57 levels
-count(X_train, 'IS_ELIGIBLE_FOR_EVERGREEN')  ## 2 levels
-count(X_train, 'Mosaic_Z4')  ## 72 levels
-count(X_train, 'REN220_SALES_CHANNEL')  ## 3 levels
+count(data, 'CANCEL_REASON')  ## 24 levels
+count(data, 'CUSTOMER_CANCEL_REASON')  ## 59 levels
+count(data, 'IS_ELIGIBLE_FOR_EVERGREEN')  ## 2 levels
+count(data, 'Mosaic_Z4')  ## 72 levels
+count(data, 'REN220_SALES_CHANNEL')  ## 3 levels
 
 # Replace N, Y with 0, 1 in IS_ELIGIBLE_FOR_EVERGREEN column
-X_train$IS_ELIGIBLE_FOR_EVERGREEN <- gsub('N', 0, X_train$IS_ELIGIBLE_FOR_EVERGREEN)
-X_train$IS_ELIGIBLE_FOR_EVERGREEN <- gsub('Y', 1, X_train$IS_ELIGIBLE_FOR_EVERGREEN)
-X_train$IS_ELIGIBLE_FOR_EVERGREEN <- as.numeric(as.character(X_train$IS_ELIGIBLE_FOR_EVERGREEN))
+data$IS_ELIGIBLE_FOR_EVERGREEN <- gsub('N', 0, data$IS_ELIGIBLE_FOR_EVERGREEN)
+data$IS_ELIGIBLE_FOR_EVERGREEN <- gsub('Y', 1, data$IS_ELIGIBLE_FOR_EVERGREEN)
+data$IS_ELIGIBLE_FOR_EVERGREEN <- as.numeric(as.character(data$IS_ELIGIBLE_FOR_EVERGREEN))
 
 # Use one-hot encoding for other categorical variables
-X_train_1h <- one_hot(as.data.table(X_train))
-names(X_train_1h)
-## 17738 obs, 199 vars
+data_1h <- one_hot(as.data.table(data))
+# names(data_1h)
+## 23651 obs, 200 vars
 
 # Check if any columns are non-numeric
-X_train_1h %>% select_if(negate(is.numeric))
+data_1h %>% select_if(negate(is.numeric))
 ## 0 rows
 ```
 
 ## Deal with duplicates
 ```{r}
-X_train_1h_dup <- X_train_1h[duplicated(X_train_1h$Ref1),]
+data_1h_dup <- data_1h[duplicated(data_1h$Ref1),]
 
 # get all duplicated obs
-X_train_1h_dup_Ref1 <- X_train_1h_dup$Ref1
-dupe <- X_train_1h[is.element(X_train_1h$Ref1, X_train_1h_dup_Ref1),]
-## 20 obs in total, and 8 of them are unique Ref1.
+data_1h_dup_Ref1 <- data_1h_dup$Ref1
+dupe <- data_1h[is.element(data_1h$Ref1, data_1h_dup_Ref1),]
+## 46 obs in total, and 19 of them are unique Ref1.
 ## But some of them have different Ref1, all other variables are the same.
 
 # Remove duplicated rows based on Ref1
-X_train_1h_no_dup_Ref1 <- X_train_1h %>% distinct(Ref1, .keep_all = TRUE)
+data_1h_no_dup_Ref1 <- data_1h %>% distinct(Ref1, .keep_all = TRUE)
 
 # Convert Ref1 - record key to the index
-X_train_1h_no_dup_Ref1 <- X_train_1h_no_dup_Ref1 %>%
+data_1h_no_dup_Ref1 <- data_1h_no_dup_Ref1 %>%
      remove_rownames() %>%
      column_to_rownames(var = 'Ref1')
-## 17726 obs, 198 vars
+## 23624 obs, 199 vars
+## data_1h_no_dup_Ref1: no dupliates in Ref1, but still some vars have exact same all other variables values except Ref1
 ```
+
+## Data Partitioning - Split training and validation sets
+```{r}
+smp_size <- floor(0.75 * nrow(data_1h_no_dup_Ref1))
+
+# set the seed to make the partition reproducible
+set.seed(123)
+train_ind <- sample(seq_len(nrow(data_1h_no_dup_Ref1)), size = smp_size)
+
+train <- data_1h_no_dup_Ref1[train_ind, ]
+test <- data_1h_no_dup_Ref1[-train_ind, ]
+
+X_train <- train %>% select (-sale)
+X_test <- test %>% select (-sale)
+y_train <- train %>% select (sale)
+y_test <- test %>% select (sale)
+```
+
+
+
 
 ## Feature selection - correlation matrix
 ```{r}
@@ -174,8 +178,6 @@ print(importance)
 # plot importance
 plot(importance)
 ```
-
-
 
 
 
