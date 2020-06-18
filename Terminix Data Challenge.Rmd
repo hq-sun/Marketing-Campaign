@@ -1,0 +1,51 @@
+---
+title: "Terminix Data Challenge"
+author: "Heqing Sun"
+date: "6/18/2020"
+output: html_document
+---
+
+
+## Environment Setup
+```{r}
+setwd('/Users/sun/Documents/GitHub/Cape-Fear-Collective-Project')
+# getwd()
+
+# If this errors out, need to install packages
+source('scripts/0-setup_environment.R')
+```
+
+## Access the Economics Data
+```{r}
+econ <- read_rds('/Users/sun/Downloads/economics_clustering.rds')
+crime <- read_rds('/Users/sun/Downloads/crime_cluster.RDS')
+demo <- read_rds('/Users/sun/Downloads/demo_sameen_subset.RDS')
+```
+
+
+## Data Preparation
+```{r}
+# a few additional packages needed
+library(flexclust)
+library(maps)
+library(cluster)    # clustering algorithms
+library(factoextra) # clustering algorithms & visualization
+library(devtools)
+# install_github('Cape-Fear-Collective/cfeaR')
+library(cfeaR)
+
+econ_demo <- merge(econ, demo, by.x = 0, by.y = 0)
+econ_demo <- econ_demo %>% column_to_rownames(var = "Row.names")
+econ_demo_crime  <- merge(econ_demo, crime, by.x = 0, by.y = 0)
+df <- econ_demo_crime %>% column_to_rownames(var = "Row.names") %>%
+  select(-c(snap_white_alone_not_hispanic_or_latino, hs_grad_ged_other_pct, bachelors_pct, partial_highschool_pct))
+## 8 vars, 2748 obs
+```
+
+## Plot Correlation Matrix
+```{r}
+x.res <- cor(df[sapply(df, is.numeric)], use='pairwise')
+
+corrplot(x.res, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+```
