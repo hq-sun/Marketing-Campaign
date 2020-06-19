@@ -57,9 +57,9 @@ names(data[sapply(data, is.factor)])
 
 ## Plot histograms for four problematic pct variables
 ```{r}
-data_problematic <- data %>% select(MTA6200A_PCT, MTA7430_AVG, MTF6200A_PCT, MTF6280A_PCT)
+m.data_problematic <- data %>% select(MTA6200A_PCT, MTA7430_AVG, MTF6200A_PCT, MTF6280A_PCT)
 
-data_problematic %>%
+m.data_problematic %>%
   keep(is.numeric) %>% 
   gather() %>% 
   ggplot(aes(value)) +
@@ -81,73 +81,73 @@ data$IS_ELIGIBLE_FOR_EVERGREEN <- gsub('Y', 1, data$IS_ELIGIBLE_FOR_EVERGREEN)
 data$IS_ELIGIBLE_FOR_EVERGREEN <- as.numeric(as.character(data$IS_ELIGIBLE_FOR_EVERGREEN))
 
 # Use one-hot encoding for other categorical variables
-data_1h <- one_hot(as.data.table(data))
-# names(data_1h)
+m.data_1h <- one_hot(as.data.table(data))
+# names(m.data_1h)
 ## 23651 obs, 200 vars
 
 # Check if any columns are non-numeric
-data_1h %>% select_if(negate(is.numeric))
+m.data_1h %>% select_if(negate(is.numeric))
 ## 0 rows
 ```
 
 ## Deal with duplicates
 ```{r}
-data_1h_dup <- data_1h[duplicated(data_1h$Ref1),]
+m.data_1h_dup <- m.data_1h[duplicated(m.data_1h$Ref1),]
 
 # get all duplicated obs
-data_1h_dup_Ref1 <- data_1h_dup$Ref1
-dupe <- data_1h[is.element(data_1h$Ref1, data_1h_dup_Ref1),]
+m.data_1h_dup_Ref1 <- m.data_1h_dup$Ref1
+m.dupe <- m.data_1h[is.element(m.data_1h$Ref1, m.data_1h_dup_Ref1),]
 ## 46 obs in total, and 19 of them are unique Ref1.
 ## But some of them have different Ref1, all other variables are the same.
 
 # Remove duplicated rows based on Ref1
-data_1h_no_dup_Ref1 <- data_1h %>% distinct(Ref1, .keep_all = TRUE)
+m.data_1h_no_dup_Ref1 <- m.data_1h %>% distinct(Ref1, .keep_all = TRUE)
 
 # Convert Ref1 - record key to the index
-data_1h_no_dup_Ref1 <- data_1h_no_dup_Ref1 %>%
+m.data_1h_no_dup_Ref1 <- m.data_1h_no_dup_Ref1 %>%
      remove_rownames() %>%
      column_to_rownames(var = 'Ref1')
 ## 23624 obs, 199 vars
 ## data_1h_no_dup_Ref1: no dupliates in Ref1, but still some vars have exact same all other variables values except Ref1
 ```
 
-## Data Partitioning - Split training and validation sets
+## Data Partitioning - Split training and validation sets for selecting important features
 ```{r}
-smp_size <- floor(0.75 * nrow(data_1h_no_dup_Ref1))
+m.smp_size <- floor(0.75 * nrow(m.data_1h_no_dup_Ref1))
 
 # set the seed to make the partition reproducible
 set.seed(123)
-train_ind <- sample(seq_len(nrow(data_1h_no_dup_Ref1)), size = smp_size)
+m.train_ind <- sample(seq_len(nrow(m.data_1h_no_dup_Ref1)), size = m.smp_size)
 
-train <- data_1h_no_dup_Ref1[train_ind, ]
-test <- data_1h_no_dup_Ref1[-train_ind, ]
+m.train <- m.data_1h_no_dup_Ref1[m.train_ind, ]
+m.test <- m.data_1h_no_dup_Ref1[-m.train_ind, ]
 
-X_train <- train %>% select (-sale)
-X_test <- test %>% select (-sale)
-y_train <- train %>% select (sale)
-y_test <- test %>% select (sale)
+# X_train <- train %>% select (-sale)
+# X_test <- test %>% select (-sale)
+# y_train <- train %>% select (sale)
+# y_test <- test %>% select (sale)
 ```
 
 ## Pre-processing the data
 ```{r}
 # Use complete cases for feature selection
-train_cc <- train %>%
-  filter(complete.cases(.)) 
-
-summarizeColumns(train_cc) %>%
-  select(name,type,na,mean,median,min,max)%>%
-  mutate(percent_miss=(na/nrow(train_cc))*100)
+# m.train_cc <- m.train %>%
+#   filter(complete.cases(.)) 
+# 
+# summarizeColumns(m.train_cc) %>%
+#   select(name,type,na,mean,median,min,max)%>%
+#   mutate(percent_miss=(na/nrow(m.train_cc))*100)
 ## No missing values, but some variables are all 0 at this complete case scenario
 
 # Remove columns that are all 0s
-train_cc_no0 <- train_cc[, colSums(train_cc != 0) > 0]
+# m.train_cc_no0 <- m.train_cc[, colSums(m.train_cc != 0) > 0]
 ```
 
 ## Boruta
 ```{r}
 # Perform Boruta search
 library(Boruta)
-boruta_output <- Boruta(sale ~ ., data=na.omit(train), doTrace=0)  
+boruta_output <- Boruta(sale ~ ., data=na.omit(m.train), doTrace=0)  
 
 # Get significant variables including tentatives
 boruta_signif <- getSelectedAttributes(boruta_output, withTentative = TRUE)
@@ -179,23 +179,6 @@ print(boruta_vars)
 plot(boruta_output, cex.axis=.7, las=2, xlab="", main="Variable Importance")  
 ```
 
-## Variable Importance from Machine Learning Algorithms - super fast
-```{r}
-# Train an rpart model and compute variable importance.
-library(caret)
-set.seed(100)
-# colnames(train) <- make.names(colnames(train))
-
-# Convert target variable to the factor
-train$sale = as.factor(train$sale)
-rPartMod <- train(sale ~ ., data=na.omit(train), method="rpart")
-rpartImp <- varImp(rPartMod)
-print(rpartImp)
-# CUSTOMER_CANCEL_REASON_OTHER	BASE_PRICE		OPTIONS_PRICE
-# REN220_SALES_CHANNEL_DTC.NON.TPV		EN220_SALES_CHANNEL_DTC.TPV
-## Only 5 variables have feature importance greater than 0.
-```
-
 ## Regularized Random Forest (RRF) algorithm - took too long, did not run it successfully
 ```{r}
 # Train an RRF model and compute variable importance.
@@ -210,17 +193,21 @@ plot(rrfImp, top = 20, main='Variable Importance')
 
 ## Subest Data Partitioning - Split training and validation sets (only 10 features)
 ```{r}
-smp_size <- floor(0.75 * nrow(data_1h_no_dup_Ref1))
+m.smp_size <- floor(0.75 * nrow(m.data_1h_no_dup_Ref1))
 
 # set the seed to make the partition reproducible
 set.seed(123)
-train_ind <- sample(seq_len(nrow(data_1h_no_dup_Ref1)), size = smp_size)
+m.train_ind <- sample(seq_len(nrow(m.data_1h_no_dup_Ref1)), size = m.smp_size)
+m.data_sub <- m.data_1h_no_dup_Ref1 %>% select(sale, all_of(boruta_vars))
+m.data_sub_noTarget <- m.data_1h_no_dup_Ref1 %>% select(all_of(boruta_vars))
+# boruta_vars = c("CUSTOMER_CANCEL_REASON_OTHER", "BASE_PRICE", "BCC5520_AVG", "ILN6200A_PCT", "REV7430_AVG", "OPTIONS_PRICE", "BCC5421_AVG", "ALL6200A_PCT", "ALL6280A_PCT", "ILN7430_AVG")
 
-data_1h_no_dup_Ref1_sub_withTarget <- data_1h_no_dup_Ref1 %>% select(sale, all_of(boruta_vars))
-data_1h_no_dup_Ref1_sub <- data_1h_no_dup_Ref1 %>% select(all_of(boruta_vars))
+train <- m.data_sub[m.train_ind, ]
+test <- m.data_sub[-m.train_ind, ]
 
-train <- data_1h_no_dup_Ref1_sub_withTarget[train_ind, ]
-test <- data_1h_no_dup_Ref1_sub_withTarget[-train_ind, ]
+# Save them to csv
+write.csv(x=train, file="./data/clean/train_sub.csv")
+write.csv(x=test, file="./data/clean/test_sub.csv")
 
 X_train <- train %>% select (-sale)
 X_test <- test %>% select (-sale)
@@ -230,66 +217,160 @@ y_test <- test %>% select (sale)
 
 ## Add Missing Value Indicator
 ```{r}
-summarizeColumns(data_1h_no_dup_Ref1_sub) %>%
+summarizeColumns(m.data_sub_noTarget) %>%
   select(name,type,na,mean,median,min,max)%>%
-  mutate(percent_miss=(na/nrow(train_sub))*100)
+  mutate(percent_miss=(na/nrow(m.data_sub_noTarget))*100)
 
 # Create missing indicators, but some of them will be all 0
-for (var in names(data_1h_no_dup_Ref1_sub)) {
-    data_1h_no_dup_Ref1_sub[[paste0(var, "_missing")]] <- ifelse(is.na(data_1h_no_dup_Ref1_sub[[var]]), 1, 0)
+for (var in names(m.data_sub_noTarget)) {
+    m.data_sub_noTarget[[paste0(var, "_missing")]] <- ifelse(is.na(m.data_sub_noTarget[[var]]), 1, 0)
   }
 
 # Filter missing indicators
-x.missing_indicators <- data_1h_no_dup_Ref1_sub %>% 
+m.mi <- m.data_sub_noTarget %>% 
   select(ends_with("_missing"))
 
 # Filter non-zero missing indicators
-x.missing_indicators_non_0 = x.missing_indicators[colSums(Filter(is.numeric, x.missing_indicators)) != 0]
-names(x.missing_indicators_non_0)
-all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$ILN6200A_PCT_missing)
-all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$REV7430_AVG_missing)
-all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$BCC5421_AVG_missing)
-all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$ALL6200A_PCT_missing)
-all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$ALL6280A_PCT_missing)
-all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$ILN7430_AVG_missing)
+m.mi_non0 = m.mi[colSums(Filter(is.numeric, m.mi)) != 0]
+names(m.mi_non0)
+all(m.mi_non0$BCC5520_AVG_missing == m.mi_non0$ILN6200A_PCT_missing)
+all(m.mi_non0$BCC5520_AVG_missing == m.mi_non0$REV7430_AVG_missing)
+all(m.mi_non0$BCC5520_AVG_missing == m.mi_non0$BCC5421_AVG_missing)
+all(m.mi_non0$BCC5520_AVG_missing == m.mi_non0$ALL6200A_PCT_missing)
+all(m.mi_non0$BCC5520_AVG_missing == m.mi_non0$ALL6280A_PCT_missing)
+all(m.mi_non0$BCC5520_AVG_missing == m.mi_non0$ILN7430_AVG_missing)
 ## These seven indicators have the exact same distribution, so only need one to represent all other 6
 
-x.missing_indicators_meaningful <- x.missing_indicators_non_0 %>% select(BCC5520_AVG_missing, OPTIONS_PRICE_missing)
+m.mi_good <- m.mi_non0 %>% select(BCC5520_AVG_missing, OPTIONS_PRICE_missing)
 
 # Combine the original non-imputed data with the non-zero missing indicators
-data_1h_no_dup_Ref1_sub <- data_1h_no_dup_Ref1 %>% select(all_of(boruta_vars))
-
-data_1h_no_dup_Ref1_sub_withmi <- cbind(data_1h_no_dup_Ref1_sub, x.missing_indicators_meaningful)
+m.data_sub_noTarget <- m.data_1h_no_dup_Ref1 %>% select(all_of(boruta_vars))
+m.data_sub_noTarget_mi <- cbind(m.data_sub_noTarget, m.mi_good)
+## 23624 obs, 12 vars
 ```
 
 ## Imputing the NA using the MICE method
 ```{r}
 # Split train test data
-train_sub <- data_1h_no_dup_Ref1_sub_withmi[train_ind, ]
-test_sub <- data_1h_no_dup_Ref1_sub_withmi[-train_ind, ]
+m.train_sub_noTarget_mi <- m.data_sub_noTarget_mi[m.train_ind, ]
+m.test_sub_noTarget_mi <- m.data_sub_noTarget_mi[-m.train_ind, ]
+
 library(mice)
-x.train_sub_imputed <- mice(data=train_sub, m=5, method="cart", maxit=10, where = is.na(train_sub))
+m.train_sub_noTarget_imputed <- mice(data=m.train_sub_noTarget_mi, m=5, method="cart", maxit=10, where = is.na(m.train_sub_noTarget_mi))
 
 # picking one of the inerations to be work on
-x.train_completeData <- complete(x.train_sub_imputed,5)
+m.train_complete <- complete(m.train_sub_noTarget_imputed,5)
 
 # check if still NAs after the imputation
-sum(is.na(x.train_completeData)) ## 0
+sum(is.na(m.train_complete)) ## 0
+
+write.csv(x=m.train_complete, file="./data/clean/train_sub_imputed_noTarget.csv")
 ```
 
 ## Logistic regression model
 ```{r}
-train_complete_withTarget <- merge(y_train ,x.train_completeData)
+# train_complete_withTarget <- merge(y_train ,x.train_completeData)
+# merge(x = y_train, y = m.train_complete, by = NULL)
 
-Log1 = glm(sale~., data = x.train_completeData, family = binomial)
-summary(TitanicLog1)
+train_complete_withTarget <- cbind(m.train_complete, sale = y_train$sale)
 
+Log1 = glm(sale~., data = train_complete_withTarget, family = binomial)
+summary(Log1)
+
+```
+
+
+```{r}
+# Let's predict outcome on Training dataset
+PredictTrain <- predict(Log1, type = "response")
+summary(PredictTrain)
+
+# This computes the average prediction for each of the two outcomes
+tapply(PredictTrain, train_complete_withTarget$sale, mean)
+```
+
+```{r}
+# Build confusion matrix with a threshold value of 0.5
+threshold_0.5 <- table(train_complete_withTarget$sale, PredictTrain > 0.5)
+threshold_0.5
+
+# Accuracy
+accuracy_0.5 <- round(sum(diag(threshold_0.5))/sum(threshold_0.5),2)
+sprintf("Accuracy is %s",accuracy_0.5)
+## Accuracy is 0.85
+
+# Mis-classification error rate
+MC_0.5 <- 1-accuracy_0.5
+sprintf("Mis-classification error is %s",MC_0.5)
+## Mis-classification error is 0.15
+
+sensitivity0.5 <- round(192/(2602+192),2)
+specificity0.5 <- round(14827/(14827+97),2)
+sprintf("Sensitivity at 0.5 threshold: %s", sensitivity0.5)
+## Sensitivity at 0.5 threshold: 0.07
+sprintf("Specificity at 0.5 threshold: %s", specificity0.5)
+## Specificity at 0.5 threshold: 0.99
+```
+
+## Generate ROC Curves
+```{r}
+library(ROCR)
+
+ROCRpred = prediction(PredictTrain, train_complete_withTarget$sale)
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+
+# Adding threshold labels
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at = seq(0,1,0.1), text.adj = c(-0.2, 1.7))
+abline(a=0, b=1)
+
+auc_train <- round(as.numeric(performance(ROCRpred, "auc")@y.values),2)
+legend(.8, .2, auc_train, title = "AUC", cex=1)
+```
+
+## Making predictions on test set
+```{r}
+test_complete_withTarget <- cbind(m.test_sub_noTarget_mi, sale = y_test$sale)
+
+PredictTest <- predict(Log1, type = "response", newdata = test_complete_withTarget)
+
+# Convert probabilities to values using the below
+
+## Based on ROC curve above, selected a threshold of 0.5
+test_tab <- table(test_complete_withTarget$sale, PredictTest > 0.5)
+test_tab
+
+accuracy_test <- round(sum(diag(test_tab))/sum(test_tab),2)
+sprintf("Accuracy on test set is %s", accuracy_test)
+## Accuracy on test set is 0.85
+
+# Compute test set AUC
+ROCRPredTest = prediction(PredictTest, test_complete_withTarget$sale)
+auc = round(as.numeric(performance(ROCRPredTest, "auc")@y.values),2)
+auc
+
+```
+
+
+
+
+
+```{r}
+library(MASS)
+library(caret)
+# Make predictions
+predictions <- Log1 %>% predict(m.test_sub_noTarget_mi)
+predictions
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, y_test),
+  R2 = R2(predictions, y_test)
+)
 ```
 
 
 ## Check Multicollinearity
 ```{r}
-
+car::vif(Log1) ## not a problem
 ```
 
 
