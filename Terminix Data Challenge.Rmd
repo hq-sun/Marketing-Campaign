@@ -191,42 +191,121 @@ train$sale = as.factor(train$sale)
 rPartMod <- train(sale ~ ., data=na.omit(train), method="rpart")
 rpartImp <- varImp(rPartMod)
 print(rpartImp)
-# CUSTOMER_CANCEL_REASON_OTHER	BASE_PRICE		OPTIONS_PRICE			REN220_SALES_CHANNEL_DTC.NON.TPV			
-# REN220_SALES_CHANNEL_DTC.TPV			CUSTOMER_CANCEL_REASON_CM		
-# Mosaic_Z4_L41			Mosaic_Z4_J35			CUSTOMER_CANCEL_REASON_TPEXCDENLS		REV6200A_PCT
-## Some of these variables have importance value as 0, so probably not that reliable.
+# CUSTOMER_CANCEL_REASON_OTHER	BASE_PRICE		OPTIONS_PRICE
+# REN220_SALES_CHANNEL_DTC.NON.TPV		EN220_SALES_CHANNEL_DTC.TPV
+## Only 5 variables have feature importance greater than 0.
 ```
 
-
-
-
-
-
-
-## Rank Features By Importance
+## Regularized Random Forest (RRF) algorithm - took too long, did not run it successfully
 ```{r}
-set.seed(123)
-# load the library
-library(mlbench)
-library(caret)
+# Train an RRF model and compute variable importance.
+set.seed(100)
+rrfMod <- train(sale ~ ., data=na.omit(train), method="RRF")
 
-# prepare training scheme
-control <- trainControl(method="repeatedcv", number=10, repeats=3)
-# train the model
-model <- train(sale~., data=train_cc_no0, method="lvq", preProcess="scale", trControl=control)
-# estimate variable importance
-importance <- varImp(model, scale=FALSE)
-# summarize importance
-print(importance)
-# plot importance
-plot(importance)
+rrfImp <- varImp(rrfMod, scale=F)
+rrfImp
+
+plot(rrfImp, top = 20, main='Variable Importance')
 ```
+
+## Subest Data Partitioning - Split training and validation sets (only 10 features)
+```{r}
+smp_size <- floor(0.75 * nrow(data_1h_no_dup_Ref1))
+
+# set the seed to make the partition reproducible
+set.seed(123)
+train_ind <- sample(seq_len(nrow(data_1h_no_dup_Ref1)), size = smp_size)
+
+data_1h_no_dup_Ref1_sub_withTarget <- data_1h_no_dup_Ref1 %>% select(sale, all_of(boruta_vars))
+data_1h_no_dup_Ref1_sub <- data_1h_no_dup_Ref1 %>% select(all_of(boruta_vars))
+
+train <- data_1h_no_dup_Ref1_sub_withTarget[train_ind, ]
+test <- data_1h_no_dup_Ref1_sub_withTarget[-train_ind, ]
+
+X_train <- train %>% select (-sale)
+X_test <- test %>% select (-sale)
+y_train <- train %>% select (sale)
+y_test <- test %>% select (sale)
+```
+
+## Add Missing Value Indicator
+```{r}
+summarizeColumns(data_1h_no_dup_Ref1_sub) %>%
+  select(name,type,na,mean,median,min,max)%>%
+  mutate(percent_miss=(na/nrow(train_sub))*100)
+
+# Create missing indicators, but some of them will be all 0
+for (var in names(data_1h_no_dup_Ref1_sub)) {
+    data_1h_no_dup_Ref1_sub[[paste0(var, "_missing")]] <- ifelse(is.na(data_1h_no_dup_Ref1_sub[[var]]), 1, 0)
+  }
+
+# Filter missing indicators
+x.missing_indicators <- data_1h_no_dup_Ref1_sub %>% 
+  select(ends_with("_missing"))
+
+# Filter non-zero missing indicators
+x.missing_indicators_non_0 = x.missing_indicators[colSums(Filter(is.numeric, x.missing_indicators)) != 0]
+names(x.missing_indicators_non_0)
+all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$ILN6200A_PCT_missing)
+all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$REV7430_AVG_missing)
+all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$BCC5421_AVG_missing)
+all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$ALL6200A_PCT_missing)
+all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$ALL6280A_PCT_missing)
+all(x.missing_indicators_non_0$BCC5520_AVG_missing == x.missing_indicators_non_0$ILN7430_AVG_missing)
+## These seven indicators have the exact same distribution, so only need one to represent all other 6
+
+x.missing_indicators_meaningful <- x.missing_indicators_non_0 %>% select(BCC5520_AVG_missing, OPTIONS_PRICE_missing)
+
+# Combine the original non-imputed data with the non-zero missing indicators
+data_1h_no_dup_Ref1_sub <- data_1h_no_dup_Ref1 %>% select(all_of(boruta_vars))
+
+data_1h_no_dup_Ref1_sub_withmi <- cbind(data_1h_no_dup_Ref1_sub, x.missing_indicators_meaningful)
+```
+
+## Imputing the NA using the MICE method
+```{r}
+# Split train test data
+train_sub <- data_1h_no_dup_Ref1_sub_withmi[train_ind, ]
+test_sub <- data_1h_no_dup_Ref1_sub_withmi[-train_ind, ]
+library(mice)
+x.train_sub_imputed <- mice(data=train_sub, m=5, method="cart", maxit=10, where = is.na(train_sub))
+
+# picking one of the inerations to be work on
+x.train_completeData <- complete(x.train_sub_imputed,5)
+
+# check if still NAs after the imputation
+sum(is.na(x.train_completeData)) ## 0
+```
+
+## Logistic regression model
+```{r}
+train_complete_withTarget <- merge(y_train ,x.train_completeData)
+
+Log1 = glm(sale~., data = x.train_completeData, family = binomial)
+summary(TitanicLog1)
+
+```
+
+
+## Check Multicollinearity
+```{r}
+
+```
+
 
 
 ## Correlation Matrix
 ```{r}
-# Remove redudant features
+x.res <- cor(train_sub[sapply(train_sub, is.numeric)], use='pairwise')
 
+corrplot(x.res, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+```
+
+
+
+```{r}
+# Remove redudant features
 set.seed(7)
 # load the library
 library(mlbench)
