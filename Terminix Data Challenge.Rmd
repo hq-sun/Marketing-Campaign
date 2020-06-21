@@ -537,8 +537,38 @@ highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.75)
 # print indexes of highly correlated attributes
 print(highlyCorrelated)
 
+# Dataframe a is the one that highly correlated with other vars
+a <- m.data_no_dup_cc[, highlyCorrelated]
+m.highlyCorrelatedVars <-names(a)
+
+data_no_dup_nohighlyCorrelatedVars <- data_no_dup %>% select(-all_of(m.highlyCorrelatedVars))
+
 ```
 
 
+## Data Partitioning - Split training and validation sets for selecting important features
+```{r}
+m.smp_size <- floor(0.75 * nrow(data_no_dup))
+
+# set the seed to make the partition reproducible
+set.seed(123)
+m.train_ind <- sample(seq_len(nrow(data_no_dup)), size = m.smp_size)
+
+m.train <- data_no_dup[m.train_ind, ]
+m.test <- data_no_dup[-m.train_ind, ]
+```
+
+
+## Boruta
+```{r}
+# Perform Boruta search
+library(Boruta)
+boruta_output <- Boruta(sale ~ ., data=na.omit(m.train), doTrace=0)  ## took 20 min to run
+
+# Get significant variables including tentatives
+boruta_signif <- getSelectedAttributes(boruta_output, withTentative = TRUE)
+print(boruta_signif)
+## 57 variables are selected
+```
 
 
