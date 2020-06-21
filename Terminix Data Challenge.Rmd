@@ -55,11 +55,25 @@ names(data[sapply(data, is.factor)])
 ## 5 categorical variables: CANCEL_REASON, CUSTOMER_CANCEL_REASON, IS_ELIGIBLE_FOR_EVERGREEN, Mosaic_Z4, REN220_SALES_CHANNEL
 ```
 
-## Plot histograms for four problematic pct variables
+# Deal with four problematic pct variables
 ```{r}
+# Plot histograms
 m.data_problematic <- data %>% select(MTA6200A_PCT, MTA7430_AVG, MTF6200A_PCT, MTF6280A_PCT)
 
 m.data_problematic %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram()
+
+# Change their range to 1-100
+data$MTA6200A_PCT <- data$MTA6200A_PCT/10
+data$MTA7430_AVG <- data$MTA7430_AVG/10
+data$MTF6200A_PCT <- data$MTF6200A_PCT/10
+data$MTF6280A_PCT <- data$MTF6280A_PCT/10
+
+data %>% select(MTA6200A_PCT, MTA7430_AVG, MTF6200A_PCT, MTF6280A_PCT) %>%
   keep(is.numeric) %>% 
   gather() %>% 
   ggplot(aes(value)) +
@@ -82,7 +96,6 @@ data$IS_ELIGIBLE_FOR_EVERGREEN <- as.numeric(as.character(data$IS_ELIGIBLE_FOR_E
 
 # Use one-hot encoding for other categorical variables
 m.data_1h <- one_hot(as.data.table(data))
-# names(m.data_1h)
 ## 23651 obs, 200 vars
 
 # Check if any columns are non-numeric
@@ -94,65 +107,51 @@ m.data_1h %>% select_if(negate(is.numeric))
 ```{r}
 m.data_1h_dup <- m.data_1h[duplicated(m.data_1h$Ref1),]
 
-# get all duplicated obs
-m.data_1h_dup_Ref1 <- m.data_1h_dup$Ref1
-m.dupe <- m.data_1h[is.element(m.data_1h$Ref1, m.data_1h_dup_Ref1),]
-## 46 obs in total, and 19 of them are unique Ref1.
-## But some of them have different Ref1, all other variables are the same.
-
 # Remove duplicated rows based on Ref1
 m.data_1h_no_dup_Ref1 <- m.data_1h %>% distinct(Ref1, .keep_all = TRUE)
 
 # Convert Ref1 - record key to the index
-m.data_1h_no_dup_Ref1 <- m.data_1h_no_dup_Ref1 %>%
+data_no_dup <- m.data_1h_no_dup_Ref1 %>%
      remove_rownames() %>%
      column_to_rownames(var = 'Ref1')
 ## 23624 obs, 199 vars
-## data_1h_no_dup_Ref1: no dupliates in Ref1, but still some vars have exact same all other variables values except Ref1
+## data_1h_no_dup_Ref1: no dupliates in Ref1, but still some vars have exact same all other variables values except Ref1 - no worries right now
+
+# Save to RDS
+saveRDS(data_no_dup, './data/clean/data_no_dup.rds')
+
+# Clean up environment
+rm(list = ls(pattern = "^m."))
+```
+
+# Check if target variable is imbalanced
+```{r}
+table(data_no_dup$sale)
+## 5.4 : 1 imbalanced dataset
 ```
 
 ## Data Partitioning - Split training and validation sets for selecting important features
 ```{r}
-m.smp_size <- floor(0.75 * nrow(m.data_1h_no_dup_Ref1))
+m.smp_size <- floor(0.75 * nrow(data_no_dup))
 
 # set the seed to make the partition reproducible
 set.seed(123)
-m.train_ind <- sample(seq_len(nrow(m.data_1h_no_dup_Ref1)), size = m.smp_size)
+m.train_ind <- sample(seq_len(nrow(data_no_dup)), size = m.smp_size)
 
-m.train <- m.data_1h_no_dup_Ref1[m.train_ind, ]
-m.test <- m.data_1h_no_dup_Ref1[-m.train_ind, ]
-
-# X_train <- train %>% select (-sale)
-# X_test <- test %>% select (-sale)
-# y_train <- train %>% select (sale)
-# y_test <- test %>% select (sale)
-```
-
-## Pre-processing the data
-```{r}
-# Use complete cases for feature selection
-# m.train_cc <- m.train %>%
-#   filter(complete.cases(.)) 
-# 
-# summarizeColumns(m.train_cc) %>%
-#   select(name,type,na,mean,median,min,max)%>%
-#   mutate(percent_miss=(na/nrow(m.train_cc))*100)
-## No missing values, but some variables are all 0 at this complete case scenario
-
-# Remove columns that are all 0s
-# m.train_cc_no0 <- m.train_cc[, colSums(m.train_cc != 0) > 0]
+m.train <- data_no_dup[m.train_ind, ]
+m.test <- data_no_dup[-m.train_ind, ]
 ```
 
 ## Boruta
 ```{r}
 # Perform Boruta search
 library(Boruta)
-boruta_output <- Boruta(sale ~ ., data=na.omit(m.train), doTrace=0)  
+boruta_output <- Boruta(sale ~ ., data=na.omit(m.train), doTrace=0)  ## took 20 min to run
 
 # Get significant variables including tentatives
 boruta_signif <- getSelectedAttributes(boruta_output, withTentative = TRUE)
 print(boruta_signif)
-## 58 variables are selected
+## 57 variables are selected
 ```
 
 ```{r}
@@ -160,7 +159,7 @@ print(boruta_signif)
 roughFixMod <- TentativeRoughFix(boruta_output)
 boruta_signif <- getSelectedAttributes(roughFixMod)
 print(boruta_signif)
-## 52 variables are selected
+## 54 variables are selected
 ```
 
 ```{r}
@@ -171,7 +170,7 @@ boruta_df <- head(imps2[order(-imps2$meanImp), ], 10)  # descending sort
 boruta_vars <- row.names(boruta_df)
 print(boruta_vars)
 # [1] "CUSTOMER_CANCEL_REASON_OTHER" "BASE_PRICE"                   "BCC5520_AVG"
-# [4] "ILN6200A_PCT"                 "REV7430_AVG"                  "OPTIONS_PRICE"
+# [4] "REV7430_AVG"                 "ILN6200A_PCT"                  "OPTIONS_PRICE"
 # [7] "BCC5421_AVG"                  "ALL6200A_PCT"                 "ALL6280A_PCT"
 # [10] "ILN7430_AVG"
 
@@ -191,43 +190,50 @@ rrfImp
 plot(rrfImp, top = 20, main='Variable Importance')
 ```
 
+
+
 ## Subest Data Partitioning - Split training and validation sets (only 10 features)
 ```{r}
-m.smp_size <- floor(0.75 * nrow(m.data_1h_no_dup_Ref1))
+m.smp_size <- floor(0.75 * nrow(data_no_dup))
 
 # set the seed to make the partition reproducible
 set.seed(123)
-m.train_ind <- sample(seq_len(nrow(m.data_1h_no_dup_Ref1)), size = m.smp_size)
-m.data_sub <- m.data_1h_no_dup_Ref1 %>% select(sale, all_of(boruta_vars))
-m.data_sub_noTarget <- m.data_1h_no_dup_Ref1 %>% select(all_of(boruta_vars))
-# boruta_vars = c("CUSTOMER_CANCEL_REASON_OTHER", "BASE_PRICE", "BCC5520_AVG", "ILN6200A_PCT", "REV7430_AVG", "OPTIONS_PRICE", "BCC5421_AVG", "ALL6200A_PCT", "ALL6280A_PCT", "ILN7430_AVG")
+m.train_ind <- sample(seq_len(nrow(data_no_dup)), size = m.smp_size)
 
-train <- m.data_sub[m.train_ind, ]
-test <- m.data_sub[-m.train_ind, ]
+data_sub <- data_no_dup %>% select(sale, all_of(boruta_vars)) ## 23624 obs, 11 vars
+data_sub_noTarget <- data_no_dup %>% select(all_of(boruta_vars)) ## 23624 obs, 10 vars
+# boruta_vars = c("CUSTOMER_CANCEL_REASON_OTHER", "BASE_PRICE", "BCC5520_AVG", "REV7430_AVG", "ILN6200A_PCT", "OPTIONS_PRICE", "BCC5421_AVG", "ALL6200A_PCT", "ALL6280A_PCT", "ILN7430_AVG")
+
+# Save to RDS
+saveRDS(data_sub, './data/clean/data_sub.rds')
+saveRDS(data_sub_noTarget, './data/clean/data_sub_noTarget.rds')
+
+m.train <- data_sub[m.train_ind, ]
+m.test <- data_sub[-m.train_ind, ]
 
 # Save them to csv
-write.csv(x=train, file="./data/clean/train_sub.csv")
-write.csv(x=test, file="./data/clean/test_sub.csv")
+write.csv(x=m.train, file="./data/clean/train_sub.csv")
+write.csv(x=m.test, file="./data/clean/test_sub.csv")
 
-X_train <- train %>% select (-sale)
-X_test <- test %>% select (-sale)
-y_train <- train %>% select (sale)
-y_test <- test %>% select (sale)
+# X_train <- train %>% select (-sale)
+# X_test <- test %>% select (-sale)
+y_train <- m.train %>% select (sale)
+y_test <- m.test %>% select (sale)
 ```
 
 ## Add Missing Value Indicator
 ```{r}
-summarizeColumns(m.data_sub_noTarget) %>%
+summarizeColumns(data_sub_noTarget) %>%
   select(name,type,na,mean,median,min,max)%>%
-  mutate(percent_miss=(na/nrow(m.data_sub_noTarget))*100)
+  mutate(percent_miss=(na/nrow(data_sub_noTarget))*100)
 
 # Create missing indicators, but some of them will be all 0
-for (var in names(m.data_sub_noTarget)) {
-    m.data_sub_noTarget[[paste0(var, "_missing")]] <- ifelse(is.na(m.data_sub_noTarget[[var]]), 1, 0)
+for (var in names(data_sub_noTarget)) {
+    data_sub_noTarget[[paste0(var, "_missing")]] <- ifelse(is.na(data_sub_noTarget[[var]]), 1, 0)
   }
 
 # Filter missing indicators
-m.mi <- m.data_sub_noTarget %>% 
+m.mi <- data_sub_noTarget %>% 
   select(ends_with("_missing"))
 
 # Filter non-zero missing indicators
@@ -244,37 +250,39 @@ all(m.mi_non0$BCC5520_AVG_missing == m.mi_non0$ILN7430_AVG_missing)
 m.mi_good <- m.mi_non0 %>% select(BCC5520_AVG_missing, OPTIONS_PRICE_missing)
 
 # Combine the original non-imputed data with the non-zero missing indicators
-m.data_sub_noTarget <- m.data_1h_no_dup_Ref1 %>% select(all_of(boruta_vars))
-m.data_sub_noTarget_mi <- cbind(m.data_sub_noTarget, m.mi_good)
+data_sub_noTarget <- data_no_dup %>% select(all_of(boruta_vars))
+data_sub_noTarget_mi <- cbind(data_sub_noTarget, m.mi_good)
 ## 23624 obs, 12 vars
+
+# Save to RDS
+saveRDS(data_sub_noTarget_mi, './data/clean/data_sub_noTarget_mi.rds')
 ```
 
 ## Imputing the NA using the MICE method
 ```{r}
 # Split train test data
-m.train_sub_noTarget_mi <- m.data_sub_noTarget_mi[m.train_ind, ]
-m.test_sub_noTarget_mi <- m.data_sub_noTarget_mi[-m.train_ind, ]
+m.train_noTarget <- data_sub_noTarget_mi[m.train_ind, ]
+m.test_noTarget <- data_sub_noTarget_mi[-m.train_ind, ]
 
 library(mice)
-m.train_sub_noTarget_imputed <- mice(data=m.train_sub_noTarget_mi, m=5, method="cart", maxit=10, where = is.na(m.train_sub_noTarget_mi))
+m.train_imputed <- mice(data=m.train_noTarget, m=5, method="cart", maxit=10, where = is.na(m.train_noTarget))
 
 # picking one of the inerations to be work on
-m.train_complete <- complete(m.train_sub_noTarget_imputed,5)
+m.train_complete <- complete(m.train_imputed, 5)
 
 # check if still NAs after the imputation
 sum(is.na(m.train_complete)) ## 0
 
-write.csv(x=m.train_complete, file="./data/clean/train_sub_imputed_noTarget.csv")
+write.csv(x=m.train_complete, file="./data/clean/train_imputed_noTarget.csv")
 ```
 
 ## Logistic regression model
 ```{r}
-# train_complete_withTarget <- merge(y_train ,x.train_completeData)
-# merge(x = y_train, y = m.train_complete, by = NULL)
+# Add Target column
+X_train <- cbind(m.train_complete, sale = y_train$sale)
+write.csv(x=X_train, file="./data/clean/X_train.csv")
 
-train_complete_withTarget <- cbind(m.train_complete, sale = y_train$sale)
-
-Log1 = glm(sale~., data = train_complete_withTarget, family = binomial)
+Log1 = glm(sale~., data = X_train, family = binomial, weights = cases)
 summary(Log1)
 
 ```
