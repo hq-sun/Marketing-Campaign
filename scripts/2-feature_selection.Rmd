@@ -1,0 +1,99 @@
+---
+title: "Feature Selection"
+author: "Heqing Sun"
+date: "6/18/2020"
+output: html_document
+---
+
+## Environment Setup
+```{r}
+# setwd('/Users/sun/Documents/GitHub/Terminix-Data-Challenge')
+getwd()
+
+# If this errors out, need to install packages
+source('0-setup_environment.R')
+```
+
+## Access the RDS file from 1-data_cleaning
+```{r}
+data_no_dup <- readRDS('../data/clean/data_no_dup.rds')
+## 23624 obs, 199 vars
+```
+
+## Remove highly correlated variables
+```{r}
+set.seed(123)
+
+# Remove target variable and variables are all zero in the complete case
+m.data_no_dup_cc <- data_no_dup %>% filter(complete.cases(.))  %>% select(-c(sale, CANCEL_REASON_CUSTMISREP,CUSTOMER_CANCEL_REASON_SERVFEEDIS,CUSTOMER_CANCEL_REASON_TPSFEEDIS,Mosaic_Z4_))
+
+# Calculate correlation matrix
+m.correlationMatrix <- cor(m.data_no_dup_cc[,])
+
+# Find attributes that are highly correlated (ideally >0.75)
+m.highlyCorrelated <- findCorrelation(m.correlationMatrix, cutoff=0.75)
+# print indexes of highly correlated attributes' index
+print(m.highlyCorrelated)
+
+# Get highly correlated variables' names
+m.highlyCorrelatedVars <- names(m.data_no_dup_cc[, m.highlyCorrelated])
+
+# Remove highlt correlated variables from data_no_dup
+data_no_dup_no_highlyCorrelatedVars <- data_no_dup %>% select(-all_of(m.highlyCorrelatedVars))
+## 23624 obs, 178 vars
+
+# Clean up environment
+rm(list = ls(pattern = "^m."))
+```
+
+## Data Partitioning for Feature Selection
+```{r}
+set.seed(123)
+m.smp_size <- floor(0.75 * nrow(data_no_dup_no_highlyCorrelatedVars))
+m.train_ind <- sample(seq_len(nrow(data_no_dup_no_highlyCorrelatedVars)), size = m.smp_size)
+m.train <- data_no_dup_no_highlyCorrelatedVars[m.train_ind, ]
+m.test <- data_no_dup_no_highlyCorrelatedVars[-m.train_ind, ]
+```
+
+## Boruta
+```{r}
+# Perform Boruta search
+boruta_output <- Boruta(sale ~ ., data=na.omit(m.train), doTrace=0)  ## took 20 min to run
+
+# Get significant variables including tentatives
+m.boruta_signif <- getSelectedAttributes(boruta_output, withTentative = TRUE)
+print(m.boruta_signif)
+## 42 variables are selected
+
+# Do a tentative rough fix
+m.roughFixMod <- TentativeRoughFix(boruta_output)
+m.boruta_signif <- getSelectedAttributes(m.roughFixMod)
+print(m.boruta_signif)
+## 39 variables are selected
+
+# Variable Importance Scores
+m.imps <- attStats(m.roughFixMod)
+m.imps2 = m.imps[m.imps$decision != 'Rejected', c('meanImp', 'decision')]
+m.boruta_df <- head(m.imps2[order(-m.imps2$meanImp), ], 10)  # descending sort
+boruta_vars <- row.names(m.boruta_df)
+print(boruta_vars)
+# [1] "CUSTOMER_CANCEL_REASON_OTHER" "OPTIONS_PRICE"                "BCC5421_AVG"                 
+# [4] "BCC5320_AVG"                  "BCC6200A_PCT"                 "MTF6200A_PCT"                
+# [7] "CUSTOMER_CANCEL_REASON_U"     "BCC6160A_PCT"                 "ILN7430_AVG"                 
+# [10] "ALL6230A_PCT"                
+
+# Plot variable importance
+plot(boruta_output, cex.axis=.7, las=2, xlab="", main="Variable Importance")  
+```
+
+## Suset data by Important Variables
+```{r}
+data_sub <- data_no_dup_no_highlyCorrelatedVars %>% select(sale, all_of(boruta_vars)) 
+## 23624 obs, 11 vars
+
+# Save to RDS
+saveRDS(data_sub, '../data/clean/data_sub.rds')
+
+# Clean up environment
+rm(list = ls(pattern = "^m."))
+```

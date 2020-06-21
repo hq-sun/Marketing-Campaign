@@ -1,0 +1,107 @@
+---
+title: "Data Wrangling"
+author: "Heqing Sun"
+date: "6/18/2020"
+output: html_document
+---
+
+## Environment Setup
+```{r}
+# setwd('/Users/sun/Documents/GitHub/Terminix-Data-Challenge')
+getwd()
+
+# If this errors out, need to install packages
+source('0-setup_environment.R')
+```
+
+## Access the RDS file from 2-feature_selection
+```{r}
+data_sub <- readRDS('../data/clean/data_sub.rds')
+## 23624 obs, 11 vars
+```
+
+## Create Missing Value Indicator
+```{r}
+summarizeColumns(data_sub) %>%
+  select(name,type,na,mean,median,min,max)%>%
+  mutate(percent_miss=(na/nrow(data_sub))*100)
+
+# Create missing indicators, but some of them will be all 0
+for (var in names(data_sub)) {
+    data_sub[[paste0(var, "_missing")]] <- ifelse(is.na(data_sub[[var]]), 1, 0)
+  }
+
+# Filter missing indicators
+m.mi <- data_sub %>% 
+  select(ends_with("_missing"))
+
+# Filter non-zero missing indicators
+m.mi_non0 = m.mi[colSums(Filter(is.numeric, m.mi)) != 0]
+names(m.mi_non0)
+all(m.mi_non0$BCC5421_AVG_missing == m.mi_non0$BCC5320_AVG_missing)
+all(m.mi_non0$BCC5421_AVG_missing == m.mi_non0$BCC6200A_PCT_missing)
+all(m.mi_non0$BCC5421_AVG_missing == m.mi_non0$MTF6200A_PCT_missing)
+all(m.mi_non0$BCC5421_AVG_missing == m.mi_non0$BCC6160A_PCT_missing)
+all(m.mi_non0$BCC5421_AVG_missing == m.mi_non0$ILN7430_AVG_missing)
+all(m.mi_non0$BCC5421_AVG_missing == m.mi_non0$ALL6230A_PCT_missing)
+## These seven indicators have the exact same distribution, so only need one to represent all other 6
+
+m.mi_good <- m.mi_non0 %>% select(BCC5421_AVG_missing, OPTIONS_PRICE_missing)
+
+# Combine the original non-imputed data with the non-zero missing indicators
+data_sub <- readRDS('../data/clean/data_sub.rds')
+data_sub_mi <- cbind(data_sub, m.mi_good)
+## 23624 obs, 13 vars
+
+# Save to RDS
+saveRDS(data_sub_mi, '../data/clean/data_sub_mi.rds')
+
+# rm(list = ls(pattern = "^m."))
+# rm(var)
+```
+
+## Data Partitioning (only 10 features with missing indicator and target variable)
+```{r}
+set.seed(123)
+m.smp_size <- floor(0.75 * nrow(data_sub_mi))
+m.train_ind <- sample(seq_len(nrow(data_sub_mi)), size = m.smp_size)
+
+m.train <- data_sub_mi[m.train_ind, ]
+m.test <- data_sub_mi[-m.train_ind, ]
+
+m.X_train <- m.train %>% select (-sale)
+m.X_test <- m.test %>% select (-sale)
+y_train <- m.train %>% select (sale)
+y_test <- m.test %>% select (sale)
+```
+
+## Imputing the NA using MICE in training and test data separately
+```{r}
+m.X_train_imputed <- mice(data=m.X_train, m=5, method="cart", maxit=10, where = is.na(m.X_train))
+m.X_test_imputed <- mice(data=m.X_test, m=5, method="cart", maxit=10, where = is.na(m.X_test))
+
+# Pick one of the inerations to be work on
+X_train <- complete(m.X_train_imputed, 5)
+X_test <- complete(m.X_test_imputed, 5)
+
+# Check if still NAs after the imputation
+sum(is.na(X_train)) ## 0
+sum(is.na(X_test)) ## 0
+
+# Save to RDS
+saveRDS(X_train, '../data/clean/X_train_imputed.rds')
+saveRDS(X_test, '../data/clean/X_test_imputed.rds')
+saveRDS(y_train, '../data/clean/y_train.rds')
+saveRDS(y_test, '../data/clean/y_test.rds')
+
+# Add Target column
+train_data <- cbind(sale = y_train$sale, X_train)
+test_data <- cbind(sale = y_test$sale, X_test)
+
+# Save to RDS
+saveRDS(train_data, '../data/clean/train_data.rds')
+saveRDS(test_data, '../data/clean/test_data.rds')
+
+# Clean up environment
+rm(list = ls(pattern = "^m."))
+```
