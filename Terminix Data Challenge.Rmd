@@ -258,7 +258,7 @@ data_sub_noTarget_mi <- cbind(data_sub_noTarget, m.mi_good)
 saveRDS(data_sub_noTarget_mi, './data/clean/data_sub_noTarget_mi.rds')
 ```
 
-## Imputing the NA using the MICE method
+## Imputing the NA using the MICE method in training and test data separately
 ```{r}
 # Split train test data
 m.train_noTarget <- data_sub_noTarget_mi[m.train_ind, ]
@@ -267,24 +267,277 @@ m.test_noTarget <- data_sub_noTarget_mi[-m.train_ind, ]
 library(mice)
 m.train_imputed <- mice(data=m.train_noTarget, m=5, method="cart", maxit=10, where = is.na(m.train_noTarget))
 
+m.test_imputed <- mice(data=m.test_noTarget, m=5, method="cart", maxit=10, where = is.na(m.test_noTarget))
+
 # picking one of the inerations to be work on
 m.train_complete <- complete(m.train_imputed, 5)
+m.test_complete <- complete(m.test_imputed, 5)
 
 # check if still NAs after the imputation
 sum(is.na(m.train_complete)) ## 0
+sum(is.na(m.test_complete)) ## 0
 
 write.csv(x=m.train_complete, file="./data/clean/train_imputed_noTarget.csv")
+write.csv(x=m.test_complete, file="./data/clean/test_imputed_noTarget.csv")
 ```
 
 ## Logistic regression model
 ```{r}
 # Add Target column
-X_train <- cbind(m.train_complete, sale = y_train$sale)
-write.csv(x=X_train, file="./data/clean/X_train.csv")
+train_data <- cbind(m.train_complete, sale = y_train$sale)
+test_data <- cbind(m.test_complete, sale = y_test$sale)
 
-Log1 = glm(sale~., data = X_train, family = binomial, weights = cases)
-summary(Log1)
+write.csv(x=train_data, file="./data/clean/X_train.csv")
+write.csv(x=test_data, file="./data/clean/X_test.csv")
 
+# Add weights column to address the imbalanced data issue
+# X_train$wt <- with(X_train, ifelse(sale==0, 20, 1))
+
+# Model
+# Log1 = glm(sale~., data = X_train,  family = binomial('logit'), maxit = 100, weights = wt)
+# glm.fit: fitted probabilities numerically 0 or 1 occurred
+# summary(Log1)
+
+```
+
+## Modeling the original unbalanced data
+```{r}
+library(caret)
+set.seed(123)
+# Convert target variable to factor
+train_data$sale <- as.factor(train_data$sale)
+test_data$sale <- as.factor(test_data$sale)
+
+model_lr <- caret::train(sale ~ .,
+                         data = train_data,
+                         method = "glm",
+                         preProcess = c("scale", "center"),
+                         trControl = trainControl(method = "repeatedcv", 
+                                                  number = 10, 
+                                                  repeats = 10, 
+                                                  verboseIter = FALSE))
+
+final <- data.frame(actual = test_data$sale,
+                    predict(model_lr, newdata = test_data, type = "prob"))
+# X_train$wt <- with(X_train, ifelse(sale==0, 20, 1))
+final$predict <- ifelse(final$X0 > 0.5, 0, 1)
+cm_original <- confusionMatrix(factor(final$predict), factor(final$actual), positive = "1")
+cm_original
+#           Reference
+# Prediction    0    1
+#          0 4953  857
+#          1   36   60
+```
+
+# Under-sampling
+```{r}
+ctrl <- trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "down")
+
+set.seed(123)
+model_lg_under <- caret::train(sale ~ .,
+                         data = train_data,
+                         method = "glm",
+                         preProcess = c("scale", "center"),
+                         trControl = ctrl)
+
+final_under <- data.frame(actual = test_data$sale,
+                    predict(model_lg_under, newdata = test_data, type = "prob"))
+
+
+final_under$predict <- ifelse(final_under$X0 > 0.5, 0, 1)
+cm_under <- confusionMatrix(factor(final_under$predict), factor(final_under$actual), positive = "1")
+cm_under
+#           Reference
+# Prediction    0    1
+#          0 3248  427
+#          1 1741  490
+```
+
+## Over-sampling
+```{r}
+ctrl <- trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "up")
+
+set.seed(123)
+model_lg_over <- caret::train(sale ~ .,
+                         data = train_data,
+                         method = "glm",
+                         preProcess = c("scale", "center"),
+                         trControl = ctrl)
+
+final_over <- data.frame(actual = test_data$sale,
+                          predict(model_lg_over, newdata = test_data, type = "prob"))
+
+final_over$predict <- ifelse(final_over$X0 > 0.5, 0, 1)
+cm_over <- confusionMatrix(factor(final_over$predict), factor(final_over$actual), positive = "1")
+cm_over
+#           Reference
+# Prediction    0    1
+#          0 3272  433
+#          1 1717  484
+
+```
+
+## ROSE
+```{r}
+ctrl <- trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "rose")
+
+set.seed(123)
+model_lg_rose <- caret::train(sale ~ .,
+                              data = train_data,
+                              method = "glm",
+                              preProcess = c("scale", "center"),
+                              trControl = ctrl)
+
+final_rose <- data.frame(actual = test_data$sale,
+                          predict(model_lg_rose, newdata = test_data, type = "prob"))
+
+final_rose$predict <- ifelse(final_rose$X0 > 0.5, 0, 1)
+cm_rose <- confusionMatrix(factor(final_rose$predict), factor(final_rose$actual), positive = "1")
+cm_rose
+# Prediction    0    1
+#          0 3151  430
+#          1 1838  487
+```
+
+## SMOTE (Synthetic Minority Oversampling Technique)
+```{r}
+ctrl <- trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "smote")
+
+set.seed(123)
+
+model_lg_smote <- caret::train(sale ~ .,
+                              data = train_data,
+                              method = "glm",
+                              preProcess = c("scale", "center"),
+                              trControl = ctrl)
+
+final_smote <- data.frame(actual = test_data$sale,
+                          predict(model_lg_smote, newdata = test_data, type = "prob"))
+
+final_smote$predict <- ifelse(final_smote$X0 > 0.5, 0, 1)
+cm_smote <- confusionMatrix(factor(final_smote$predict), factor(final_smote$actual), positive = "1")
+cm_smote
+#           Reference
+# Prediction    0    1
+#          0 4353  685
+#          1  636  232
+```
+
+## SMOTE - Random Forest -didn't run successfully
+```{r}
+ctrl <- trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "smote")
+
+set.seed(123)
+model_rf_smote <- caret::train(sale ~ .,
+                              data = train_data,
+                              method = "rf",
+                              preProcess = c("scale", "center"),
+                              trControl = ctrl)
+
+
+final_rf_smote <- data.frame(actual = test_data$sale,
+                          predict(model_rf_smote, newdata = test_data, type = "prob"))
+
+final_rf_smote$predict <- ifelse(final_rf_smote$X0 > 0.5, 0, 1)
+
+cm_rf_smote <- confusionMatrix(factor(final_rf_smote$predict), factor(final_rf_smote$actual))
+cm_rf_smote
+```
+
+
+## Compare the predictions of all these models
+```{r}
+models <- list(original = model_lr,
+                       under = model_lg_under,
+                       over = model_lg_over,
+                       smote = model_lg_smote,
+                       rose = model_lg_rose)
+
+resampling <- resamples(models)
+bwplot(resampling)
+
+## SMOTE have the comparable accuuracy to original, but way higher specificity and sensitivity
+```
+
+```{r}
+comparison <- data.frame(model = names(models),
+                         Sensitivity = rep(NA, length(models)),
+                         Specificity = rep(NA, length(models)),
+                         Precision = rep(NA, length(models)),
+                         Recall = rep(NA, length(models)),
+                         F1 = rep(NA, length(models)))
+
+comparison[comparison$model == "original", ] <- filter(comparison, model == "original") %>%
+    mutate(Sensitivity = cm_original$byClass["Sensitivity"],
+           Specificity = cm_original$byClass["Specificity"],
+           Precision = cm_original$byClass["Precision"],
+           Recall = cm_original$byClass["Recall"],
+           F1 = cm_original$byClass["F1"])
+
+comparison[comparison$model == "under", ] <- filter(comparison, model == "under") %>%
+    mutate(Sensitivity = cm_under$byClass["Sensitivity"],
+           Specificity = cm_under$byClass["Specificity"],
+           Precision = cm_under$byClass["Precision"],
+           Recall = cm_under$byClass["Recall"],
+           F1 = cm_under$byClass["F1"])
+
+comparison[comparison$model == "over", ] <- filter(comparison, model == "over") %>%
+    mutate(Sensitivity = cm_over$byClass["Sensitivity"],
+           Specificity = cm_over$byClass["Specificity"],
+           Precision = cm_over$byClass["Precision"],
+           Recall = cm_over$byClass["Recall"],
+           F1 = cm_over$byClass["F1"])
+
+comparison[comparison$model == "smote", ] <- filter(comparison, model == "smote") %>%
+    mutate(Sensitivity = cm_smote$byClass["Sensitivity"],
+           Specificity = cm_smote$byClass["Specificity"],
+           Precision = cm_smote$byClass["Precision"],
+           Recall = cm_smote$byClass["Recall"],
+           F1 = cm_smote$byClass["F1"])
+
+comparison[comparison$model == "rose", ] <- filter(comparison, model == "rose") %>%
+    mutate(Sensitivity = cm_rose$byClass["Sensitivity"],
+           Specificity = cm_rose$byClass["Specificity"],
+           Precision = cm_rose$byClass["Precision"],
+           Recall = cm_rose$byClass["Recall"],
+           F1 = cm_rose$byClass["F1"])
+
+## FOR LOOP not working here
+# for (name in names(models)) {
+#   model <- get(paste0("cm_", name))
+# 
+#   comparison[comparison$model == name, ] <- filter(comparison, model == name) %>%
+#     mutate(Sensitivity = model$byClass["Sensitivity"],
+#            Specificity = model$byClass["Specificity"],
+#            Precision = model$byClass["Precision"],
+#            Recall = model$byClass["Recall"],
+#            F1 = model$byClass["F1"])
+# }
+
+comparison %>%
+  gather(x, y, Sensitivity:F1) %>%
+  ggplot(aes(x = x, y = y, color = model)) +
+    geom_jitter(width = 0.2, alpha = 0.5, size = 3)
 ```
 
 
