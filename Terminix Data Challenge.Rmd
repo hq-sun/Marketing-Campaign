@@ -119,7 +119,7 @@ data_no_dup <- m.data_1h_no_dup_Ref1 %>%
 
 # Save to RDS
 saveRDS(data_no_dup, './data/clean/data_no_dup.rds')
-
+# data_no_dup <- readRDS('./data/clean/data_no_dup.rds')
 # Clean up environment
 rm(list = ls(pattern = "^m."))
 ```
@@ -433,37 +433,12 @@ final_smote <- data.frame(actual = test_data$sale,
 final_smote$predict <- ifelse(final_smote$X0 > 0.5, 0, 1)
 cm_smote <- confusionMatrix(factor(final_smote$predict), factor(final_smote$actual), positive = "1")
 cm_smote
+cm_smote$byClass
 #           Reference
 # Prediction    0    1
 #          0 4353  685
 #          1  636  232
 ```
-
-## SMOTE - Random Forest -didn't run successfully
-```{r}
-ctrl <- trainControl(method = "repeatedcv", 
-                     number = 10, 
-                     repeats = 10, 
-                     verboseIter = FALSE,
-                     sampling = "smote")
-
-set.seed(123)
-model_rf_smote <- caret::train(sale ~ .,
-                              data = train_data,
-                              method = "rf",
-                              preProcess = c("scale", "center"),
-                              trControl = ctrl)
-
-
-final_rf_smote <- data.frame(actual = test_data$sale,
-                          predict(model_rf_smote, newdata = test_data, type = "prob"))
-
-final_rf_smote$predict <- ifelse(final_rf_smote$X0 > 0.5, 0, 1)
-
-cm_rf_smote <- confusionMatrix(factor(final_rf_smote$predict), factor(final_rf_smote$actual))
-cm_rf_smote
-```
-
 
 ## Compare the predictions of all these models
 ```{r}
@@ -481,44 +456,32 @@ bwplot(resampling)
 
 ```{r}
 comparison <- data.frame(model = names(models),
-                         Sensitivity = rep(NA, length(models)),
-                         Specificity = rep(NA, length(models)),
                          Precision = rep(NA, length(models)),
                          Recall = rep(NA, length(models)),
                          F1 = rep(NA, length(models)))
 
 comparison[comparison$model == "original", ] <- filter(comparison, model == "original") %>%
-    mutate(Sensitivity = cm_original$byClass["Sensitivity"],
-           Specificity = cm_original$byClass["Specificity"],
-           Precision = cm_original$byClass["Precision"],
+    mutate(Precision = cm_original$byClass["Precision"],
            Recall = cm_original$byClass["Recall"],
            F1 = cm_original$byClass["F1"])
 
 comparison[comparison$model == "under", ] <- filter(comparison, model == "under") %>%
-    mutate(Sensitivity = cm_under$byClass["Sensitivity"],
-           Specificity = cm_under$byClass["Specificity"],
-           Precision = cm_under$byClass["Precision"],
+    mutate(Precision = cm_under$byClass["Precision"],
            Recall = cm_under$byClass["Recall"],
            F1 = cm_under$byClass["F1"])
 
 comparison[comparison$model == "over", ] <- filter(comparison, model == "over") %>%
-    mutate(Sensitivity = cm_over$byClass["Sensitivity"],
-           Specificity = cm_over$byClass["Specificity"],
-           Precision = cm_over$byClass["Precision"],
+    mutate(Precision = cm_over$byClass["Precision"],
            Recall = cm_over$byClass["Recall"],
            F1 = cm_over$byClass["F1"])
 
 comparison[comparison$model == "smote", ] <- filter(comparison, model == "smote") %>%
-    mutate(Sensitivity = cm_smote$byClass["Sensitivity"],
-           Specificity = cm_smote$byClass["Specificity"],
-           Precision = cm_smote$byClass["Precision"],
+    mutate(Precision = cm_smote$byClass["Precision"],
            Recall = cm_smote$byClass["Recall"],
            F1 = cm_smote$byClass["F1"])
 
 comparison[comparison$model == "rose", ] <- filter(comparison, model == "rose") %>%
-    mutate(Sensitivity = cm_rose$byClass["Sensitivity"],
-           Specificity = cm_rose$byClass["Specificity"],
-           Precision = cm_rose$byClass["Precision"],
+    mutate(Precision = cm_rose$byClass["Precision"],
            Recall = cm_rose$byClass["Recall"],
            F1 = cm_rose$byClass["F1"])
 
@@ -535,110 +498,19 @@ comparison[comparison$model == "rose", ] <- filter(comparison, model == "rose") 
 # }
 
 comparison %>%
-  gather(x, y, Sensitivity:F1) %>%
+  gather(x, y, Precision:F1) %>%
   ggplot(aes(x = x, y = y, color = model)) +
     geom_jitter(width = 0.2, alpha = 0.5, size = 3)
 ```
-
-
-```{r}
-# Let's predict outcome on Training dataset
-PredictTrain <- predict(Log1, type = "response")
-summary(PredictTrain)
-
-# This computes the average prediction for each of the two outcomes
-tapply(PredictTrain, train_complete_withTarget$sale, mean)
-```
-
-```{r}
-# Build confusion matrix with a threshold value of 0.5
-threshold_0.5 <- table(train_complete_withTarget$sale, PredictTrain > 0.5)
-threshold_0.5
-
-# Accuracy
-accuracy_0.5 <- round(sum(diag(threshold_0.5))/sum(threshold_0.5),2)
-sprintf("Accuracy is %s",accuracy_0.5)
-## Accuracy is 0.85
-
-# Mis-classification error rate
-MC_0.5 <- 1-accuracy_0.5
-sprintf("Mis-classification error is %s",MC_0.5)
-## Mis-classification error is 0.15
-
-sensitivity0.5 <- round(192/(2602+192),2)
-specificity0.5 <- round(14827/(14827+97),2)
-sprintf("Sensitivity at 0.5 threshold: %s", sensitivity0.5)
-## Sensitivity at 0.5 threshold: 0.07
-sprintf("Specificity at 0.5 threshold: %s", specificity0.5)
-## Specificity at 0.5 threshold: 0.99
-```
-
-## Generate ROC Curves
-```{r}
-library(ROCR)
-
-ROCRpred = prediction(PredictTrain, train_complete_withTarget$sale)
-ROCRperf = performance(ROCRpred, "tpr", "fpr")
-
-# Adding threshold labels
-plot(ROCRperf, colorize=TRUE, print.cutoffs.at = seq(0,1,0.1), text.adj = c(-0.2, 1.7))
-abline(a=0, b=1)
-
-auc_train <- round(as.numeric(performance(ROCRpred, "auc")@y.values),2)
-legend(.8, .2, auc_train, title = "AUC", cex=1)
-```
-
-## Making predictions on test set
-```{r}
-test_complete_withTarget <- cbind(m.test_sub_noTarget_mi, sale = y_test$sale)
-
-PredictTest <- predict(Log1, type = "response", newdata = test_complete_withTarget)
-
-# Convert probabilities to values using the below
-
-## Based on ROC curve above, selected a threshold of 0.5
-test_tab <- table(test_complete_withTarget$sale, PredictTest > 0.5)
-test_tab
-
-accuracy_test <- round(sum(diag(test_tab))/sum(test_tab),2)
-sprintf("Accuracy on test set is %s", accuracy_test)
-## Accuracy on test set is 0.85
-
-# Compute test set AUC
-ROCRPredTest = prediction(PredictTest, test_complete_withTarget$sale)
-auc = round(as.numeric(performance(ROCRPredTest, "auc")@y.values),2)
-auc
-
-```
-
-
-
-
-
-```{r}
-library(MASS)
-library(caret)
-# Make predictions
-predictions <- Log1 %>% predict(m.test_sub_noTarget_mi)
-predictions
-# Model performance
-data.frame(
-  RMSE = RMSE(predictions, y_test),
-  R2 = R2(predictions, y_test)
-)
-```
-
 
 ## Check Multicollinearity
 ```{r}
 car::vif(Log1) ## not a problem
 ```
 
-
-
 ## Correlation Matrix
 ```{r}
-x.res <- cor(train_sub[sapply(train_sub, is.numeric)], use='pairwise')
+x.res <- cor(X_train[sapply(X_train, is.numeric)], use='pairwise')
 
 corrplot(x.res, type = "upper", order = "hclust", 
          tl.col = "black", tl.srt = 45)
@@ -648,17 +520,20 @@ corrplot(x.res, type = "upper", order = "hclust",
 
 ```{r}
 # Remove redudant features
-set.seed(7)
+set.seed(123)
 # load the library
 library(mlbench)
 library(caret)
 
+m.data_no_dup_cc <- data_no_dup %>% filter(complete.cases(.))  %>% select(-c(sale, CANCEL_REASON_CUSTMISREP,CUSTOMER_CANCEL_REASON_SERVFEEDIS,CUSTOMER_CANCEL_REASON_TPSFEEDIS,Mosaic_Z4_))
+names(data_no_dup)
 # calculate correlation matrix
-correlationMatrix <- cor(X_train_1h_cc_no0[,])
+correlationMatrix <- cor(m.data_no_dup_cc[,])
 # summarize the correlation matrix
 print(correlationMatrix)
-# find attributes that are highly corrected (ideally >0.75)
-highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.5)
+
+# find attributes that are highly correlated (ideally >0.75)
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.75)
 # print indexes of highly correlated attributes
 print(highlyCorrelated)
 
