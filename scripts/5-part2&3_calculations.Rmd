@@ -101,3 +101,10 @@ summary(test_data$sale)
 power.prop.test(p1=0.18, p2=0.18*1.05, power=0.8, alternative='two.sided', sig.level=0.1)
 ```
 
+```{r}
+# Calculate the sales rate in the test data
+summary(test_data$sale)
+## ~ 0.18
+power.prop.test(p1=0.18, p2=0.18*1.05, power=0.8, alternative='two.sided', sig.level=0.05)
+power.prop.test(p1=0.18, p2=0.18*1.05, power=0.8, alternative='one.sided', sig.level=0.1)
+```
