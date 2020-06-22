@@ -1,12 +1,11 @@
 ---
-title: "Part 2 Calculation"
+title: "Part 2&3 Calculations"
 author: "Heqing Sun"
 date: "6/18/2020"
 output: html_document
 ---
 
 ## Environment Setup
-```{r}
 # setwd('/Users/sun/Documents/GitHub/Terminix-Data-Challenge')
 getwd()
 
@@ -82,10 +81,23 @@ colnames(m.threshold) <- c("recall", "precision", "threshold")
 ## Find that when the threshold >= 0.5832411, the precision will greater than 1/3
 ```
 
-# Select Promising Records
+# Part 2 - Select Promising Records
 ```{r}
 selected <- final_rose %>% filter(X1 >= 0.5832411) ## 447 obs
 table(selected$actual)
 #   0   1 
 # 298 149 
+
+# Clean up environment
+rm(list = ls(pattern = "^m."))
 ```
+
+## Part 3 - Calculate the Sample Size
+```{r}
+# Calculate the sales rate in the test data
+summary(test_data$sale)
+## ~ 0.18
+
+power.prop.test(p1=0.18, p2=0.18*1.05, power=0.8, alternative='two.sided', sig.level=0.1)
+```
+
