@@ -1,0 +1,128 @@
+---
+title: "Part 2 Calculation"
+author: "Heqing Sun"
+date: "6/18/2020"
+output: html_document
+---
+
+## Environment Setup
+```{r}
+# setwd('/Users/sun/Documents/GitHub/Terminix-Data-Challenge')
+getwd()
+
+# If this errors out, need to install packages
+source('0-setup_environment.R')
+```
+
+## Access the RDS file from previous steps
+```{r}
+train_data <- readRDS('../data/clean/train_data.rds')
+test_data <- readRDS('../data/clean/test_data.rds')
+data_sub_mi <- readRDS('../data/clean/data_sub_mi.rds')
+```
+
+#
+```{r}
+# Use the same partition method to split the data_sub_mi to get test data index
+set.seed(123)
+m.smp_size <- floor(0.75 * nrow(data_sub_mi))
+m.train_ind <- sample(seq_len(nrow(data_sub_mi)), size = m.smp_size)
+m.test <- data_sub_mi[-m.train_ind, ]
+
+# Set Ref1 as the index
+rownames(test_data) <- rownames(m.test)
+```
+
+## Use ROSE Logistic Regression
+```{r}
+# Convert target variable to factor
+train_data$sale <- as.factor(train_data$sale)
+test_data$sale <- as.factor(test_data$sale)
+
+set.seed(123)
+ctrl <- trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "rose")
+
+model_lr_rose <- caret::train(sale ~ .,
+                              data = train_data,
+                              method = "glm",
+                              preProcess = c("scale", "center"),
+                              trControl = ctrl)
+
+final_rose <- data.frame(actual = test_data$sale,
+                          predict(model_lr_rose, newdata = test_data, type = "prob"))
+final_rose$predict <- ifelse(final_rose$X0 > 0.5, 0, 1)
+
+cm_rose <- confusionMatrix(factor(final_rose$predict), factor(final_rose$actual), positive = "1")
+cm_rose
+```
+
+
+## Plot Precision vs. row #
+```{r}
+# library(precrec)
+# sscurves <- evalmod(scores = P10N10$scores, labels = P10N10$labels)
+
+library(PRROC)
+a <- final_rose %>% filter(actual==1)
+pc <-  a$X1
+
+b <- final_rose %>% filter(actual==0)
+nc <-  b$X1
+
+# ROC Curve    
+roc <- roc.curve(scores.class0 = pc, scores.class1 = nc, curve = T)
+plot(roc)
+
+# PR Curve
+pr <- pr.curve(scores.class0 = pc, scores.class1 = nc, curve = T)
+plot(pr, auc.main=FALSE)
+
+m.threshold <- data.frame(pr$curve)
+colnames(m.threshold) <- c("recall", "precision", "threshold")
+```
+
+```{r}
+pr <- pr.curve(scores.class0 = final_rose$X1, scores.class1=scores.class0, weights.class0 = final_rose$actual, weights.class1 = 1-weights.class0, curve = TRUE)
+plot(pr)
+```
+ 
+```{r}
+library(tidymodels)
+
+pr_dat <- final_rose %>%
+  pr_curve(actual, X1)
+
+pr_dat
+
+pr_dat %>%
+  arrange(.threshold) %>% # this step is not strictly necessary here because the rows are already ordered by `.threshold`
+  ggplot() +
+  geom_path(aes(recall, precision)) + # connect the points in the order in which they appear in the data to form a curve
+  coord_equal()
+```
+
+
+
+ 
+
+
+
+# Select promising records
+```{r}
+# m.selected <- final_rose %>% filter(predict==1) ## 2190 obs
+table(m.selected$actual)
+
+m.actual_1 <- final_rose %>% filter(actual==1) ## 917 obs
+## Therefore, can select 917*2 = 1834 actual=0 but predicted to be 1's obs
+
+m.actual_0 <- final_rose %>% filter(actual==0)
+m.selected_actual_0 <- m.actual_0 %>% slice_max(X1, n = 1834)
+
+m.actual_0 <- final_rose %>% filter(actual==0) %>% arrange(desc(X1))
+m.selected_actual_0 <- m.actual_0 %>% slice_head(n = 1834)
+```
+
