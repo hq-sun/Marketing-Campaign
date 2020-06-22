@@ -68,10 +68,6 @@ m.pc <-  m.a$X1
 m.b <- final_rose %>% filter(actual==0)
 m.nc <-  m.b$X1
 
-# ROC Curve    
-roc <- roc.curve(scores.class0 = m.pc, scores.class1 = m.nc, curve = T)
-plot(roc)
-
 # PR Curve
 pr <- pr.curve(scores.class0 = m.pc, scores.class1 = m.nc, curve = T)
 plot(pr, auc.main=FALSE)
@@ -88,6 +84,9 @@ selected <- final_rose %>% filter(X1 >= 0.5832411) ## 447 obs
 table(selected$actual)
 #   0   1 
 # 298 149 
+
+selected
+write.csv(selected,'../data/clean/selected_records_for_campaign.csv')
 
 # Clean up environment
 rm(list = ls(pattern = "^m."))

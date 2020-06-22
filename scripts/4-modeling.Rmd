@@ -23,6 +23,10 @@ X_train <- readRDS('../data/clean/X_train_imputed.rds')
 X_test <- readRDS('../data/clean/X_test_imputed.rds')
 y_train <- readRDS( '../data/clean/y_train.rds')
 y_test <- readRDS('../data/clean/y_test.rds')
+
+# Convert target variable to factor
+train_data$sale <- as.factor(train_data$sale)
+test_data$sale <- as.factor(test_data$sale)
 ```
 
 ## Correlation Matrix
@@ -35,10 +39,6 @@ corrplot(m.res, type = "upper", order = "hclust",
 
 ## Modeling the original imbalanced data
 ```{r}
-# Convert target variable to factor
-train_data$sale <- as.factor(train_data$sale)
-test_data$sale <- as.factor(test_data$sale)
-
 set.seed(123)
 model_lr <- caret::train(sale ~ .,
                          data = train_data,
@@ -141,6 +141,14 @@ cm_rose
 #          0 3313  403
 #          1 1676  514
 ```
+
+## ROSE Model Results
+```{r}
+model_lr_rose
+model_lr_rose$finalModel
+summary(model_lr_rose)
+```
+
 
 ## SMOTE (Synthetic Minority Oversampling Technique)
 ```{r}
