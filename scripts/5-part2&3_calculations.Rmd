@@ -92,6 +92,79 @@ write.csv(selected,'../data/clean/selected_records_for_campaign.csv')
 rm(list = ls(pattern = "^m."))
 ```
 
+## Calculate the variables means for selected variables
+```{r}
+unselected <- final_rose %>% filter(X1 < 0.5832411) ## 5459 obs
+
+# Get the index
+m.unselected.index <- rownames(unselected)
+m.selected.index <- rownames(selected)
+
+# Subset dataframe into two parts
+m.selected_data <- test_data[m.selected.index, ]
+m.unselected_data <- test_data[m.unselected.index, ]
+
+colMeans(m.selected_data)
+
+numdata<-m.selected_data[sapply(m.selected_data, is.numeric)]  
+lapply(numdata, mean, na.rm = T)  # Returns a list  
+
+numdata<-m.unselected_data[sapply(m.unselected_data, is.numeric)]  
+lapply(numdata, mean, na.rm = T)  # Returns a list  
+
+# Create selected column
+m.selected_data$selected <- 1
+m.unselected_data$selected <- 0
+
+# Join two dataframes vertically
+m.test_withSelectedColumn <- rbind(m.selected_data, m.unselected_data)
+
+m.test_withSelectedColumn_melted <- melt(m.test_withSelectedColumn, id.var = "selected")
+
+
+ggplot(data = m.test_withSelectedColumn_melted, aes(x=variable, y=value)) %>% 
+  geom_boxplot(aes(fill = selected)) %>% 
+  geom_point(aes(y=value, group=selected), position = position_dodge(width=0.75)) %>% 
+  facet_wrap( ~ variable, scales="free") %>% 
+  # xlab("x-axis") + ylab("y-axis") + ggtitle("Title") %>% 
+  guides(fill=guide_legend(title="Legend_Title"))
+p 
+
+#
+p2 <- ggplot(m.test_withSelectedColumn_melted, aes(x=variable, y=value, fill=selected)) + 
+    geom_boxplot() +
+    facet_wrap(~variable, scale="free")
+
+p2
+
+ggplot(data = m.test_withSelectedColumn_melted, aes(x=variable, y=value)) + geom_boxplot(aes(fill=selected))
+
+# m.test$selected <- ifelse(rownames(m.test, m.selected.index), 1, 0)
+
+# d$status <- ifelse(endsWith(d$dataset_id, "H"), "healthy", "disease")
+
+# boxplot(m.selected_data)
+# boxplot(m.unselected_data)
+# 
+# barchart(as.kcca(k5, data = df))
+# barchart(sale ~ ., m.unselected_data)
+# 
+# ggplot(stack(m.test_withSelectedColumn), aes(x = factor(ind, levels = names(selected)), y = values)) + geom_boxplot()
+# 
+# boxplot(selected)
+
+m.variety <- m.variety[-selected]
+p2 <- ggplot(m.test_withSelectedColumn, aes(x=m.variety, fill=selected)) + 
+    geom_boxplot() +
+    facet_wrap(~m.variety, scale="free")
+
+plot()
+
+m.variety <- names(m.test_withSelectedColumn)
+
+p2
+```
+
 ## Part 3 - Calculate the Sample Size
 ```{r}
 # Calculate the sales rate in the test data
