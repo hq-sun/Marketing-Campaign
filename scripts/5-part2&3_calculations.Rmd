@@ -118,52 +118,49 @@ m.unselected_data$selected <- 0
 
 # Join two dataframes vertically
 m.test_withSelectedColumn <- rbind(m.selected_data, m.unselected_data)
-
 m.test_withSelectedColumn_melted <- melt(m.test_withSelectedColumn, id.var = "selected")
 
-
-ggplot(data = m.test_withSelectedColumn_melted, aes(x=variable, y=value)) %>% 
-  geom_boxplot(aes(fill = selected)) %>% 
-  geom_point(aes(y=value, group=selected), position = position_dodge(width=0.75)) %>% 
-  facet_wrap( ~ variable, scales="free") %>% 
-  # xlab("x-axis") + ylab("y-axis") + ggtitle("Title") %>% 
-  guides(fill=guide_legend(title="Legend_Title"))
-p 
-
-#
-p2 <- ggplot(m.test_withSelectedColumn_melted, aes(x=variable, y=value, fill=selected)) + 
-    geom_boxplot() +
-    facet_wrap(~variable, scale="free")
-
-p2
-
-ggplot(data = m.test_withSelectedColumn_melted, aes(x=variable, y=value)) + geom_boxplot(aes(fill=selected))
-
-# m.test$selected <- ifelse(rownames(m.test, m.selected.index), 1, 0)
-
-# d$status <- ifelse(endsWith(d$dataset_id, "H"), "healthy", "disease")
-
-# boxplot(m.selected_data)
-# boxplot(m.unselected_data)
-# 
-# barchart(as.kcca(k5, data = df))
-# barchart(sale ~ ., m.unselected_data)
-# 
-# ggplot(stack(m.test_withSelectedColumn), aes(x = factor(ind, levels = names(selected)), y = values)) + geom_boxplot()
-# 
-# boxplot(selected)
-
-m.variety <- m.variety[-selected]
-p2 <- ggplot(m.test_withSelectedColumn, aes(x=m.variety, fill=selected)) + 
-    geom_boxplot() +
-    facet_wrap(~m.variety, scale="free")
-
-plot()
-
-m.variety <- names(m.test_withSelectedColumn)
-
-p2
 ```
+
+
+
+
+```{r}
+names(m.test_withSelectedColumn)
+ggplot(m.test_withSelectedColumn,aes(x=CUSTOMER_CANCEL_REASON_OTHER))+geom_histogram()+facet_grid(~selected)+theme_bw()
+ggplot(m.test_withSelectedColumn,aes(x=OPTIONS_PRICE))+geom_histogram()+facet_grid(~selected)+theme_bw()
+ggplot(m.test_withSelectedColumn,aes(x=BCC5421_AVG))+geom_histogram()+facet_grid(~selected)+theme_bw()
+ggplot(m.test_withSelectedColumn,aes(x=BCC5320_AVG))+geom_histogram()+facet_grid(~selected)+theme_bw()
+ggplot(m.test_withSelectedColumn,aes(x=BCC6200A_PCT))+geom_histogram()+facet_grid(~selected)+theme_bw()
+ggplot(m.test_withSelectedColumn,aes(x=MTF6200A_PCT))+geom_histogram()+facet_grid(~selected)+theme_bw()
+ggplot(m.test_withSelectedColumn,aes(x=CUSTOMER_CANCEL_REASON_U))+geom_histogram()+facet_grid(~selected)+theme_bw()
+ggplot(m.test_withSelectedColumn,aes(x=BCC6160A_PCT))+geom_histogram()+facet_grid(~selected)+theme_bw()
+
+ggplot(m.test_withSelectedColumn,aes(x=ILN7430_AVG))+geom_histogram()+facet_grid(~selected)+theme_bw()
+ggplot(m.test_withSelectedColumn,aes(x=ALL6230A_PCT))+geom_histogram()+facet_grid(~selected)+theme_bw()
+ggplot(m.test_withSelectedColumn,aes(x=BCC5421_AVG_missing))+geom_histogram()+facet_grid(~selected)+theme_bw()
+ggplot(m.test_withSelectedColumn,aes(x=OPTIONS_PRICE_missing))+geom_histogram()+facet_grid(~selected)+theme_bw()
+
+
+```
+
+
+```{r}
+# Change line color by sex
+ggplot(wdata, aes(x = weight)) +
+  geom_histogram(aes(color = sex), fill = "white",
+                position = "identity", bins = 30) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) 
+
+
+# change fill and outline color manually 
+ggplot(wdata, aes(x = weight)) +
+  geom_histogram(aes(color = sex, fill = sex), 
+                position = "identity", bins = 30, alpha = 0.4) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+  scale_fill_manual(values = c("#00AFBB", "#E7B800"))
+```
+
 
 ## Part 3 - Calculate the Sample Size
 ```{r}
