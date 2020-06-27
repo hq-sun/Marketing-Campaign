@@ -122,9 +122,7 @@ m.test_withSelectedColumn_melted <- melt(m.test_withSelectedColumn, id.var = "se
 
 ```
 
-
-
-
+## Calculate the differences between two groups
 ```{r}
 names(m.test_withSelectedColumn)
 ggplot(m.test_withSelectedColumn,aes(x=CUSTOMER_CANCEL_REASON_OTHER))+geom_histogram()+facet_grid(~selected)+theme_bw()
@@ -140,27 +138,7 @@ ggplot(m.test_withSelectedColumn,aes(x=ILN7430_AVG))+geom_histogram()+facet_grid
 ggplot(m.test_withSelectedColumn,aes(x=ALL6230A_PCT))+geom_histogram()+facet_grid(~selected)+theme_bw()
 ggplot(m.test_withSelectedColumn,aes(x=BCC5421_AVG_missing))+geom_histogram()+facet_grid(~selected)+theme_bw()
 ggplot(m.test_withSelectedColumn,aes(x=OPTIONS_PRICE_missing))+geom_histogram()+facet_grid(~selected)+theme_bw()
-
-
 ```
-
-
-```{r}
-# Change line color by sex
-ggplot(wdata, aes(x = weight)) +
-  geom_histogram(aes(color = sex), fill = "white",
-                position = "identity", bins = 30) +
-  scale_color_manual(values = c("#00AFBB", "#E7B800")) 
-
-
-# change fill and outline color manually 
-ggplot(wdata, aes(x = weight)) +
-  geom_histogram(aes(color = sex, fill = sex), 
-                position = "identity", bins = 30, alpha = 0.4) +
-  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
-  scale_fill_manual(values = c("#00AFBB", "#E7B800"))
-```
-
 
 ## Part 3 - Calculate the Sample Size
 ```{r}
