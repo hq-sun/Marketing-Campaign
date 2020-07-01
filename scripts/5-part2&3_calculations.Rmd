@@ -7,7 +7,6 @@ output: html_document
 
 ## Environment Setup
 ```{r}
-# setwd('/Users/sun/Documents/GitHub/Terminix-Data-Challenge')
 getwd()
 
 # If this errors out, need to install packages
