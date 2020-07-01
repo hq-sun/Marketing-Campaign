@@ -1,7 +1,7 @@
 # Marketing Campaign Project
 The response.csv file contains observations taken from a recent direct marketing campaign to win back former customers. 
 
-The goal of this project is to 
+The goal of this project is to:
 
 1. Develop a predictive model to be used to select records to be included in a future campaign.
 
